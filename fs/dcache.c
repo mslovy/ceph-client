@@ -650,6 +650,32 @@ kill_it:
 }
 EXPORT_SYMBOL(dput);
 
+/**
+ * d_invalidate - invalidate a dentry
+ * @dentry: dentry to invalidate
+ *
+ * Try to invalidate the dentry if it turns out to be
+ * possible. If there are reasons not to delete it
+ * return -EBUSY. On success return 0.
+ *
+ * no dcache lock.
+ */
+ 
+int d_invalidate(struct dentry * dentry)
+{
+	/*
+	 * If it's already been dropped, return OK.
+	 */
+	spin_lock(&dentry->d_lock);
+	if (d_unhashed(dentry)) {
+		spin_unlock(&dentry->d_lock);
+		return 0;
+	}
+	spin_unlock(&dentry->d_lock);
+
+	return check_submounts_and_drop(dentry);
+}
+EXPORT_SYMBOL(d_invalidate);
 
 /* This must be called with d_lock held */
 static inline void __dget_dlock(struct dentry *dentry)
@@ -1163,7 +1189,7 @@ EXPORT_SYMBOL(have_submounts);
  * reachable (e.g. NFS can unhash a directory dentry and then the complete
  * subtree can become unreachable).
  *
- * Only one of d_invalidate() and d_set_mounted() must succeed.  For
+ * Only one of check_submounts_and_drop() and d_set_mounted() must succeed.  For
  * this reason take rename_lock and d_lock on dentry and ancestors.
  */
 int d_set_mounted(struct dentry *dentry)
@@ -1172,7 +1198,7 @@ int d_set_mounted(struct dentry *dentry)
 	int ret = -ENOENT;
 	write_seqlock(&rename_lock);
 	for (p = dentry->d_parent; !IS_ROOT(p); p = p->d_parent) {
-		/* Need exclusion wrt. d_invalidate() */
+		/* Need exclusion wrt. check_submounts_and_drop() */
 		spin_lock(&p->d_lock);
 		if (unlikely(d_unhashed(p))) {
 			spin_unlock(&p->d_lock);
@@ -1342,32 +1368,17 @@ static void check_and_drop(void *_data)
 }
 
 /**
- * d_invalidate - detach submounts, prune dcache, and drop
- * @dentry: dentry to invalidate (aka detach, prune and drop)
- *
- * Try to invalidate the dentry if it turns out to be
- * possible. If there are reasons not to delete it
- * return -EBUSY. On success return 0.
- *
- * no dcache lock.
+ * check_submounts_and_drop - detach submounts, prune dcache, and drop
  *
  * The final d_drop is done as an atomic operation relative to
  * rename_lock ensuring there are no races with d_set_mounted.  This
  * ensures there are no unhashed dentries on the path to a mountpoint.
+ *
+ * @dentry: dentry to detach, prune and drop
  */
-int d_invalidate(struct dentry *dentry)
+int check_submounts_and_drop(struct dentry *dentry)
 {
 	int ret = 0;
-
-	/*
-	 * If it's already been dropped, return OK.
-	 */
-	spin_lock(&dentry->d_lock);
-	if (d_unhashed(dentry)) {
-		spin_unlock(&dentry->d_lock);
-		return 0;
-	}
-	spin_unlock(&dentry->d_lock);
 
 	/* Negative dentries can be dropped without further checks */
 	if (!dentry->d_inode) {
@@ -1402,7 +1413,7 @@ int d_invalidate(struct dentry *dentry)
 out:
 	return ret;
 }
-EXPORT_SYMBOL(d_invalidate);
+EXPORT_SYMBOL(check_submounts_and_drop);
 
 /**
  * __d_alloc	-	allocate a dcache entry
