@@ -2434,7 +2434,9 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 		goto out_dput;
 	}
 
-	d_invalidate(dentry);
+	err = d_invalidate(dentry);
+	if (err)
+		goto out_unlock;
 
 	down_write(&root->fs_info->subvol_sem);
 
@@ -2519,6 +2521,7 @@ out_release:
 	btrfs_subvolume_release_metadata(root, &block_rsv, qgroup_reserved);
 out_up_write:
 	up_write(&root->fs_info->subvol_sem);
+out_unlock:
 	if (err) {
 		spin_lock(&dest->root_item_lock);
 		root_flags = btrfs_root_flags(&dest->root_item);
