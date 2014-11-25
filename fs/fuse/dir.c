@@ -274,6 +274,9 @@ out:
 
 invalid:
 	ret = 0;
+
+	if (!(flags & LOOKUP_RCU) && check_submounts_and_drop(entry) != 0)
+		ret = 1;
 	goto out;
 }
 
